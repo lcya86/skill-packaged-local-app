@@ -33,14 +33,14 @@
 Agent Skills 通用（Claude Code / Codex / 支持 `SKILL.md` 的宿主）：
 
 ```bash
-npx skills add <this-repo-url> --skill skill-packaged-local-app
+npx skills add https://github.com/lcya86/skill-packaged-local-app --skill skill-packaged-local-app
 ```
 
 或直接放进宿主的技能目录：
 
 ```bash
-git clone <this-repo-url> ~/.claude/skills/skill-packaged-local-app      # Claude Code
-git clone <this-repo-url> ~/.hermes/skills/software-development/skill-packaged-local-app   # Hermes
+git clone https://github.com/lcya86/skill-packaged-local-app ~/.claude/skills/skill-packaged-local-app      # Claude Code
+git clone https://github.com/lcya86/skill-packaged-local-app ~/.hermes/skills/software-development/skill-packaged-local-app   # Hermes
 ```
 
 装好后，Agent 在你要「做个本机看板/台账/工具并让它变成 skill」时会自动加载它。
