@@ -1,7 +1,7 @@
 ---
 name: skill-packaged-local-app
 description: "Use when creating or maintaining a skill-packaged H5 app."
-version: 1.1.1
+version: 1.1.2
 license: MIT
 platforms: [linux, macos]
 metadata:
