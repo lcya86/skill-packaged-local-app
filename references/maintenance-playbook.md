@@ -45,7 +45,7 @@
   - 判定“外部”靠**代理头**（`cf-connecting-ip` / `x-forwarded-for`）——隧道进程从本机回连，
     只看 `remoteAddress` 会把整条隧道当“本机”放行。
   - 纯回环且无代理头 → 豁免（CLI 探活、进程复用、本机浏览器零改动）。
-  - 首次 `/?token=…` → `Set-Cookie: …; HttpOnly; SameSite=Lax; Path=/; Max-Age=<n>` + 302 去掉 URL 里的口令。
+  - 首次 `/?token=<口令>` → `Set-Cookie: …; HttpOnly; SameSite=Lax; Path=/; Max-Age=<n>` + 302 去掉 URL 里的口令。
   - 401 分形态：`/api/*` 回 JSON，页面回极简 HTML；**都不回显 URL/路径/业务数据**。
   - 口令比较用恒定时间比较（`crypto.timingSafeEqual`）。
   - 口令存数据目录的 `0600` 文件，由启动脚本读进环境变量（**不进 argv**，`ps` 里看不到）。
