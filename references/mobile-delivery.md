@@ -90,18 +90,40 @@ ps -o pid,lstart,command -p $(pgrep -f cloudflared | tr '\n' ',' | sed 's/,$//')
 
 - `manifest.webmanifest`：`name` / `short_name` / `display: standalone` / `start_url` / `theme_color` / `icons`（192 + 512）。
 - `apple-touch-icon`：**180×180** PNG；页面 `<head>` 加 `apple-mobile-web-app-capable` 与 `apple-mobile-web-app-title`。
-- **图标 PNG 在本地生成**：把一份 SVG 用无头浏览器渲染成 192/512/180 三种尺寸，**不要引入构建工具**：
+- **图标 PNG 在本地生成**：先在**一张大母版**上渲一次，再降采样出各尺寸 —— **不要**按每种尺寸分别用无头浏览器截 SVG：
 
 ```bash
-# 形状示例：无头 Chrome 渲染 SVG → PNG，三种尺寸各跑一次
-for s in 180 192 512; do
-  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless \
-    --screenshot="icon-$s.png" --window-size="$s,$s" \
-    --default-background-color=00000000 "file://$PWD/icon.svg"
-done
+# ① 母版：SVG 只给 viewBox，width/height 用 100%（写死尺寸会被裁，见下）
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --disable-gpu --no-sandbox \
+  --hide-scrollbars --window-size=1024,1024 --virtual-time-budget=3000 \
+  --screenshot="/tmp/icon-master.png" "file://$PWD/icon.svg"
+# ② 降采样：写成一个脚本落盘再跑（不要把代码喂给解释器）
+#    tools/make-icons.py: 母版 LANCZOS resize 到 512 / 192 / 180 并各存一份
+python3 tools/make-icons.py
 ```
 
+**别按尺寸分别截 SVG**：SVG 若写死 `width="512" height="512"`，用 `--window-size=180,180` 截它时，浏览器**不缩放、直接裁左上角** —— 你会拿到一张"碎片"而不是缩小的图标。曾真实交付过一版：512 那张正常、192/180 那两张是左上角碎片；iPhone 把碎片**放大铺满**图标位，用户看到的是「一个巨大的色块」。改成 ① 母版 + ② 降采样后，三张的字形占比才可能一致（实测 65.0/65.1/65.0）。
+
 本机没有 Chrome 也可以：`rsvg-convert`／`qlmanage`／设计软件导出都行，要求只是拿到 **180 / 192 / 512 三张 PNG**（headless 参数随版本而异，以实际可用为准）。
+
+### 图标交付前必查（用像素量，别只用眼睛看）
+
+| 检查 | 判据 | 怎么量 |
+| --- | --- | --- |
+| 底色**满幅** | 四角像素 = 底色，**α=255**（不能透明） | 读 PNG：四角 RGBA；有透明角说明图标自带了圆角 —— 圆角应交给系统遮罩 |
+| 三张**同源** | 字形占宽比例三张一致（±1%） | 白色像素 bbox / 画布宽 |
+| **居中** | 上下留白差、左右留白差 ≤ 2%（母版尺度） | 同上 |
+| 尺寸 | 180×180 / 192×192 / 512×512 | `sips -g pixelWidth -g pixelHeight` |
+
+`--default-background-color=00000000`（透明底）用在**满幅方形**图标上是反效果：它会把"没有背景色"的假设带进结果。满幅图标直接用默认白底再被底色矩形盖住即可。
+
+### 换了图标必须换 URL（否则平台死缓存）
+
+iOS 与 Chrome 会**长期缓存** `apple-touch-icon` 与 manifest 里的图标，光改文件内容不生效。可靠做法是**加版本后缀**再指向它：
+
+- 文件名：`apple-touch-icon-v2.png` / `icon-192-v2.png` / `icon-512-v2.png`（旧的同名文件保留一份，覆盖为新内容，兼容"约定路径"回退）
+- 三处引用一起改：`<link rel="apple-touch-icon">`、`<link rel="icon">`、manifest 的 `icons[].src`（manifest 可再带 `?v=2`）
+- 同时告知用户：**先长按删掉桌面旧图标再重加** —— 不删旧的，桌面留着的还是旧图标
 
 ### start_url 的坑（重点）
 
@@ -191,6 +213,9 @@ qrencode -o /tmp/<app>-qr.png "https://<随机域名>.trycloudflare.com/?token=<
 | 手机图标点了白屏 / 报错 | 域名换了，图标还指向旧域名 | 域名一变就重新交付卡片；卡片注明「地址可能变」 |
 | 用户说「服务挂了」，其实是 cookie 过期 | 401 页没给输入框，用户以为进不去 = 挂了 | **401 页必须带口令输入框**；卡片写「出现输入框就再输一遍口令」 |
 | 图标是个模糊白块 | `apple-touch-icon` 缺失或尺寸不对 | 本地渲染 180×180 PNG 并 `curl -I` 确认可达 |
+| 图标显示为**巨大色块 / 只有一角** | 按各尺寸分别截 SVG → SVG 写死了 width/height → 浏览器裁左上角，拿到"碎片"；手机把碎片放大铺满 | 改成"1024 母版 + LANCZOS 降采样"；并用像素 bbox 量三张占比是否一致 |
+| 图标比别的 App **小、被塞进白块** | 图标自带了圆角/透明角，不是满幅 | 改成满幅方形底（α=255），圆角交给系统遮罩 |
+| 换了图标但手机**还是旧的** | iOS/Chrome 死缓存图标 | 图标 URL 加版本后缀（`-v2`）并同步 manifest；让用户先删旧图标再重加 |
 | 合盖第二天公网不通 | 以为 `caffeinate -i` 挡住了所有睡眠 | 明确告知「合盖仍断」；重启后重查端口与进程 |
 
 ## 存疑项
